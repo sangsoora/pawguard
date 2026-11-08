@@ -7,3 +7,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health, name="health"),
 ]
+# config/urls.py
+admin.site.site_title = "Sangsoo"

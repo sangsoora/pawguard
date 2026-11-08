@@ -57,3 +57,24 @@ def test_owner_cannot_book_self(owner):
 def test_user_email_unique(owner):
     with pytest.raises(IntegrityError), transaction.atomic():
         User.objects.create_user("other", "owner@example.com", "pw")
+
+
+def test_seed_bookings_idempotent_and_backdated(db, settings):
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+    from django.utils import timezone
+
+    from apps.bookings.management.commands.seed_bookings import SEED_BOOKINGS
+
+    settings.DEBUG = True
+    with pytest.raises(CommandError):  # users not seeded yet
+        call_command("seed_bookings")
+
+    call_command("seed_users")
+    call_command("seed_bookings")
+    call_command("seed_bookings")
+    assert Booking.objects.count() == len(SEED_BOOKINGS)
+
+    burst = Booking.objects.filter(owner__username="lucas", status=Booking.Status.PENDING)
+    assert burst.count() == 6
+    assert all(timezone.now() - b.created_at < timezone.timedelta(hours=2) for b in burst)
