@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.accounts",
     "apps.bookings",
+    "apps.risk",
 ]
 
 MIDDLEWARE = [
@@ -62,6 +63,9 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
 }
+
+# Redis backs the sliding-window counters. Leave empty to fall back to DB counts.
+REDIS_URL = env("REDIS_URL", default="")
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

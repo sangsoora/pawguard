@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.bookings.models import Booking
+from apps.risk.engine import score_booking
 
 S = Booking.Status
 
@@ -24,13 +25,13 @@ SEED_BOOKINGS = [
     ("marc", "emma", -3, 2, "75.00", S.CANCELLED, 24 * 7),
     # --- High-value booking to a sitter sharing phone/IP with another account ---
     ("sofia", "quickcash1", 3, 14, "2400.00", S.PENDING, 2),
-    # --- Burst: one owner books six different sitters within an hour ---
-    ("lucas", "emma", 10, 2, "70.00", S.PENDING, 1),
-    ("lucas", "pablo", 10, 2, "70.00", S.PENDING, 1),
-    ("lucas", "chloe", 10, 2, "70.00", S.PENDING, 1),
-    ("lucas", "hans", 10, 2, "70.00", S.PENDING, 1),
-    ("lucas", "quickcash1", 10, 2, "70.00", S.PENDING, 1),
-    ("lucas", "quickcash2", 10, 2, "70.00", S.PENDING, 1),
+    # --- Burst: one owner books six different sitters within ~30 minutes ---
+    ("lucas", "emma", 10, 2, "70.00", S.PENDING, 0.9),
+    ("lucas", "pablo", 10, 2, "70.00", S.PENDING, 0.8),
+    ("lucas", "chloe", 10, 2, "70.00", S.PENDING, 0.7),
+    ("lucas", "hans", 10, 2, "70.00", S.PENDING, 0.6),
+    ("lucas", "quickcash1", 10, 2, "70.00", S.PENDING, 0.5),
+    ("lucas", "quickcash2", 10, 2, "70.00", S.PENDING, 0.4),
     # --- Sitter that is suspended ---
     ("olivia", "suspended_sam", -40, 3, "110.00", S.COMPLETED, 24 * 50),
 ]
@@ -55,6 +56,7 @@ class Command(BaseCommand):
         today = timezone.localdate()
         now = timezone.now()
         created = 0
+        created_list = []
         for owner, sitter, start_in, nights, amount, status, hours_ago in SEED_BOOKINGS:
             start = today + timedelta(days=start_in)
             booking, was_created = Booking.objects.get_or_create(
@@ -72,7 +74,16 @@ class Command(BaseCommand):
                 Booking.objects.filter(pk=booking.pk).update(
                     created_at=now - timedelta(hours=hours_ago)
                 )
+                # Auto-scoring ran at creation time with created_at=now; redo it as of the
+                # backdated time so velocity rules see the intended history.
+                booking.refresh_from_db()
+                booking.risk_assessments.all().delete()
+                created_list.append(booking)
                 created += 1
+
+        # Score in chronological order so history-dependent rules behave like live traffic.
+        for booking in sorted(created_list, key=lambda b: b.created_at):
+            score_booking(booking)
 
         self.stdout.write(
             self.style.SUCCESS(f"Seeded {len(SEED_BOOKINGS)} bookings ({created} new).")
