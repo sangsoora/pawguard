@@ -45,9 +45,26 @@ class RiskAssessment(models.Model):
     decision = models.CharField(max_length=10, choices=Decision.choices)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class ReviewStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        CLEARED = "cleared", "Cleared (false positive)"
+        CONFIRMED = "confirmed", "Confirmed (true positive)"
+
+    review_status = models.CharField(
+        max_length=10, choices=ReviewStatus.choices, default=ReviewStatus.PENDING
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.CharField(max_length=500, blank=True)
+
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["user", "-created_at"])]
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["review_status", "decision", "-score"]),
+        ]
 
     def __str__(self):
         return f"Assessment #{self.pk} booking={self.booking_id} score={self.score}"
