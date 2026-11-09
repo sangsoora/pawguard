@@ -93,3 +93,14 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
+
+# --- Celery (broker defaults to REDIS_URL) ---
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=REDIS_URL or "memory://")
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_TIME_LIMIT = 30
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # fair dispatch for short tasks
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# Score new bookings through Celery instead of inline. Needs a broker and a running worker.
+RISK_ASYNC_SCORING = env.bool("RISK_ASYNC_SCORING", default=False)

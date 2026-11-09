@@ -7,16 +7,22 @@ from django.dispatch import receiver
 
 from apps.bookings.models import Booking
 
+from .tasks import autoscore, score_booking_task
+
 logger = logging.getLogger(__name__)
 
 
-def _score(booking_id: int) -> None:
-    # Imported lazily so tests can patch apps.risk.engine.score_booking.
-    from . import engine
-
+def _dispatch(booking_id: int) -> None:
+    """Hand scoring to Celery, or run it inline when async is off or the broker is down."""
+    if getattr(settings, "RISK_ASYNC_SCORING", False):
+        try:
+            score_booking_task.delay(booking_id)
+            return
+        except Exception:
+            # Broker unreachable: score inline so the booking is never left unscored.
+            logger.exception("Could not enqueue scoring for booking %s; scoring inline", booking_id)
     try:
-        booking = Booking.objects.select_related("owner", "sitter").get(pk=booking_id)
-        engine.score_booking(booking)
+        autoscore(booking_id)
     except Exception:
         # A scoring failure must never lose or block the booking itself.
         logger.exception("Risk scoring failed for booking %s", booking_id)
@@ -26,9 +32,9 @@ def _score(booking_id: int) -> None:
 def autoscore_new_booking(sender, instance, created, raw=False, **kwargs):
     """Score each new booking once it is committed.
 
-    Synchronous for now; this is the seam where a Celery task will replace the direct call.
-    Disable with RISK_AUTOSCORE = False.
+    RISK_ASYNC_SCORING=True enqueues a Celery task; otherwise it runs inline.
+    Disable entirely with RISK_AUTOSCORE = False.
     """
     if not created or raw or not getattr(settings, "RISK_AUTOSCORE", True):
         return
-    transaction.on_commit(lambda: _score(instance.pk))
+    transaction.on_commit(lambda: _dispatch(instance.pk))

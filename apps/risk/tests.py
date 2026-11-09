@@ -124,7 +124,7 @@ def test_scoring_failure_does_not_break_booking(
     def boom(booking):
         raise RuntimeError("scorer down")
 
-    monkeypatch.setattr("apps.risk.engine.score_booking", boom)
+    monkeypatch.setattr("apps.risk.tasks.score_booking", boom)
     with django_capture_on_commit_callbacks(execute=True):
         b = book(owner, sitter)
     assert Booking.objects.filter(pk=b.pk).exists()
@@ -193,3 +193,48 @@ def test_velocity_falls_back_to_db_when_redis_down(owner, sitter, monkeypatch, s
     monkeypatch.setattr(windows, "get_client", lambda: Down())
     bookings = [book(owner, sitter, hours_ago=0.5) for _ in range(4)]
     assert [score_booking(b).score for b in bookings] == [0, 0, 0, 40]
+
+
+# --- Celery async scoring ---
+
+
+def test_task_is_idempotent(owner, sitter):
+    from apps.risk.tasks import score_booking_task
+
+    b = book(owner, sitter)
+    first = score_booking_task.delay(b.pk).get()  # eager in test settings
+    assert first is not None
+    assert score_booking_task.delay(b.pk).get() is None  # duplicate delivery is a no-op
+    assert b.risk_assessments.count() == 1
+
+
+def test_task_skips_deleted_booking(db):
+    from apps.risk.tasks import score_booking_task
+
+    assert score_booking_task.delay(999999).get() is None
+
+
+def test_signal_enqueues_task_when_async(
+    owner, sitter, settings, monkeypatch, django_capture_on_commit_callbacks
+):
+    settings.RISK_ASYNC_SCORING = True
+    queued = []
+    monkeypatch.setattr("apps.risk.signals.score_booking_task.delay", queued.append)
+    with django_capture_on_commit_callbacks(execute=True):
+        b = book(owner, sitter)
+    assert queued == [b.pk]
+    assert b.risk_assessments.count() == 0  # scoring is left to the worker
+
+
+def test_signal_scores_inline_if_broker_down(
+    owner, sitter, settings, monkeypatch, django_capture_on_commit_callbacks
+):
+    settings.RISK_ASYNC_SCORING = True
+
+    def broker_down(booking_id):
+        raise ConnectionError("broker down")
+
+    monkeypatch.setattr("apps.risk.signals.score_booking_task.delay", broker_down)
+    with django_capture_on_commit_callbacks(execute=True):
+        b = book(owner, sitter)
+    assert b.risk_assessments.count() == 1

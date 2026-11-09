@@ -20,3 +20,20 @@ Health check: http://localhost:8000/health/
 pytest
 ruff check . && ruff format --check .
 ```
+
+## Async scoring (Celery + Redis)
+
+New bookings are scored on creation. By default this runs inline; to score via Celery:
+
+```bash
+# .env
+REDIS_URL=redis://localhost:6379/0
+RISK_ASYNC_SCORING=True
+```
+
+```bash
+celery -A config worker -l info
+```
+
+If the broker is unreachable when a booking is saved, scoring falls back to inline so no booking
+goes unscored. The task is idempotent and retries with exponential backoff.
