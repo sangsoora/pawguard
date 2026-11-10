@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { Decision, ReviewStatus, Verdict } from './types'
+import type { Decision, ReviewStatus, Verdict, VerificationState } from './types'
 
 export function ScoreBadge({ score, decision }: { score: number; decision: Decision }) {
   return (
@@ -51,4 +51,9 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function VerdictBadge({ verdict }: { verdict: Verdict }) {
   return <span className={`badge verdict ${verdict}`}>{verdict.replace('_', ' ')}</span>
+}
+
+export function VerificationBadge({ state }: { state: VerificationState | null }) {
+  const label = state ?? 'none'
+  return <span className={`badge vstate ${label}`}>{label.replace('_', ' ')}</span>
 }

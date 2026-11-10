@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pawguard.example/contracts/provider_webhook.schema.json",
+  "title": "Identity verification provider webhook",
+  "description": "Contract between the verification provider and PawGuard. The provider (mock or real) must emit exactly this; PawGuard rejects anything else. Changing it is a breaking change for both sides.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "type", "created", "data"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 100, "description": "Unique event id; used for idempotency"},
+    "type": {"enum": ["verification.approved", "verification.rejected", "verification.needs_review"]},
+    "created": {"type": "integer", "minimum": 0, "description": "Unix seconds"},
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference"],
+      "properties": {
+        "reference": {"type": "string", "minLength": 1, "maxLength": 100, "description": "Provider reference returned when the case was submitted"},
+        "reason": {"type": "string", "maxLength": 500}
+      }
+    }
+  }
+}

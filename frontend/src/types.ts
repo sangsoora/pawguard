@@ -63,6 +63,7 @@ export interface ConsoleUser {
   sitter_max_score: number | null
   sitter_flagged_count: number
   risk_score: number
+  verification_state: VerificationState | null
   recent_assessments?: Assessment[]
   received_assessments?: Assessment[]
 }
@@ -96,4 +97,37 @@ export interface Moderation {
   reviewed_at: string | null
   review_note: string
   created_at: string
+}
+
+export type VerificationState =
+  | 'requested'
+  | 'submitted'
+  | 'manual_review'
+  | 'verified'
+  | 'rejected'
+
+export interface VerificationEvent {
+  from_state: string
+  to_state: string
+  source: 'user' | 'provider' | 'agent' | 'system'
+  actor_label: string
+  detail: string
+  created_at: string
+}
+
+export interface VerificationCase {
+  id: number
+  user: string
+  user_id: number
+  state: VerificationState
+  full_name: string
+  document_number_masked: string
+  document_country: string
+  rejection_reason: string
+  provider_ref: string | null
+  submitted_at: string | null
+  decided_at: string | null
+  purged_at: string | null
+  created_at: string
+  events: VerificationEvent[]
 }

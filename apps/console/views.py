@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
@@ -12,6 +12,8 @@ from apps.core.models import AuditLog
 from apps.core.permissions import IsTrustAgent
 from apps.moderation.models import ModerationResult
 from apps.risk.models import RiskAssessment
+from apps.verification import services as verification
+from apps.verification.models import VerificationCase
 
 from . import serializers as s
 
@@ -158,6 +160,11 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, ConsoleViewS
             ),
         ).annotate(
             risk_score=Greatest(Coalesce("max_score", 0), Coalesce("sitter_max_score", 0)),
+            verification_state=Subquery(
+                VerificationCase.objects.filter(user=OuterRef("pk"))
+                .order_by("-created_at")
+                .values("state")[:1]
+            ),
         )
         p = self.request.query_params
         if p.get("search"):
@@ -211,6 +218,25 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, ConsoleViewS
             action_name="user.suspend",
         )
 
+    @action(detail=True, methods=["post"], url_path="request-verification")
+    def request_verification(self, request, pk=None):
+        """Ask a user to verify their identity (creates a 'requested' case)."""
+        target = self.get_object()
+        if target.role == User.Role.AGENT:
+            return Response(
+                {"detail": "Agent accounts cannot be verified from the console."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        with transaction.atomic():
+            try:
+                case = verification.request_verification(target, agent=request.user)
+            except verification.SubmissionNotAllowed as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+            audit.record(
+                request.user, "user.request_verification", "user", target.pk, case_id=case.pk
+            )
+        return Response(self.get_serializer(self.get_object()).data)
+
     @action(detail=True, methods=["post"])
     def reinstate(self, request, pk=None):
         self.get_object()
@@ -237,3 +263,54 @@ class AuditLogViewSet(mixins.ListModelMixin, ConsoleViewSet):
         if p.get("target_id", "").isdigit():
             qs = qs.filter(target_id=int(p["target_id"]))
         return qs
+
+
+class VerificationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, ConsoleViewSet):
+    """Verification cases. Filter: ?state=manual_review (comma-separated). Oldest first, so the
+    longest-waiting case is at the top of the queue."""
+
+    serializer_class = s.VerificationCaseSerializer
+
+    def get_queryset(self):
+        qs = VerificationCase.objects.select_related("user").prefetch_related("events")
+        if self.request.query_params.get("state"):
+            qs = qs.filter(state__in=self.request.query_params["state"].split(","))
+        return qs.order_by("created_at", "id")
+
+    def _decide(self, request, pk, to):
+        self.get_object()
+        input_ = s.ReasonInputSerializer(data=request.data)
+        input_.is_valid(raise_exception=True)
+        reason = input_.validated_data["reason"]
+        with transaction.atomic():
+            case = VerificationCase.objects.select_for_update().get(pk=pk)
+            # Agents only settle what the provider could not. Deciding a 'submitted' case would
+            # bypass the provider entirely.
+            if case.state != VerificationCase.State.MANUAL_REVIEW:
+                return Response(
+                    {"detail": f"Only manual-review cases can be decided ({case.state})."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            try:
+                verification.transition(
+                    case,
+                    to,
+                    source="agent",
+                    actor_label=request.user.username,
+                    detail=reason,
+                )
+            except verification.InvalidTransition:
+                return Response(
+                    {"detail": f"Cannot move a {case.state} case to {to}."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            audit.record(request.user, f"verification.{to}", "verification", case.pk, reason=reason)
+        return Response(self.get_serializer(self.get_object()).data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        return self._decide(request, pk, VerificationCase.State.VERIFIED)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        return self._decide(request, pk, VerificationCase.State.REJECTED)

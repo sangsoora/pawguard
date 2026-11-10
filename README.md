@@ -89,3 +89,88 @@ python manage.py eval_moderation --llm   # same, with real LLM calls: adds cost 
 change that hurts auto-flag precision or lets suspicious messages bypass humans fails CI. The
 dataset is small and was written alongside the rules, so treat its numbers as a floor for regression
 detection, not as a measure of real-world accuracy: grow it with reviewed production messages.
+
+## Identity verification
+
+A KYC state machine (`apps/verification`): `requested -> submitted -> verified | rejected |
+manual_review -> verified | rejected`. Transitions go through `services.transition()`, which locks
+the row, refuses illegal moves and writes an append-only `VerificationEvent`.
+
+- **Provider boundary:** `provider.py` has a `MockProvider`; swap `get_provider()` for a real vendor.
+  Submissions go through a Celery task that retries with backoff and is idempotent.
+- **Signed webhooks:** `POST /api/verification/webhook/` checks an HMAC-SHA256 signature
+  (`X-Provider-Signature: t=<unix>,v1=<hex>`, 5-minute window against replay, fails closed if no
+  secret is set), validates the body against `contracts/provider_webhook.schema.json`, and applies it
+  idempotently by event id. Provider retries, duplicates and out-of-order events are acknowledged
+  without changing state.
+- **Contract tests:** the JSON Schema is the contract. Tests check that the provider's output
+  validates against it, that PawGuard rejects anything off-contract, and that the examples in
+  `contracts/examples/` conform.
+- **PII:** name and document number are encrypted at rest (Fernet, key rotation supported via
+  `FIELD_ENCRYPTION_KEYS`), never returned by the user API, and shown to agents only masked. A
+  retention job blanks them after `VERIFICATION_RETENTION_DAYS` (default 30) once a case is
+  decided; the case and its audit trail stay.
+
+```bash
+# .env (production must set its own values; in DEBUG a dev key is derived from SECRET_KEY)
+FIELD_ENCRYPTION_KEYS=<key from Fernet.generate_key()>
+VERIFICATION_WEBHOOK_SECRET=<long random string>
+```
+
+```bash
+python manage.py simulate_provider_webhook <case_id> approved|rejected|review   # act as the provider
+python manage.py purge_verification_documents                                   # retention (also daily via celery beat)
+```
+
+Users submit through `POST /api/verification/me/` (a marketplace-user login is not built yet, so
+tests and the shell call it directly). Agents handle manual-review cases in the console's
+Verification tab and can request verification from a user's page; every action is audited.
+
+## Observability
+
+**Logs.** Structured JSON (`LOG_FORMAT=json`, the default outside DEBUG; plain text in DEBUG).
+Every line carries the request id and, inside a span, `trace_id`/`span_id`, so a log line can be
+joined to its trace. Extra fields are first-class keys:
+
+```json
+{"ts": "2026-11-10T01:12:12.902+00:00", "level": "INFO", "logger": "pawguard.request", "message": "request", "method": "GET", "path": "/health/", "route": "health/", "status": 200, "duration_ms": 111.7, "request_id": "demo-request-0001"}
+```
+
+`X-Request-ID` is accepted from callers (if it looks sane), generated otherwise, and echoed back.
+
+**Metrics.** `GET /metrics/` (Prometheus). Set `METRICS_TOKEN` and send `Authorization: Bearer
+<token>`; with no token it is open only in DEBUG. Key series:
+
+| Metric | Use |
+|---|---|
+| `pawguard_flags_total{source,kind}` | **flags per hour**: `sum by (source) (increase(pawguard_flags_total[1h]))` |
+| `pawguard_review_queue_size{queue}` | items waiting for a human (risk, messages, verification) |
+| `pawguard_review_queue_oldest_age_seconds{queue}` | **review queue age**, computed from the DB at scrape time |
+| `pawguard_rule_hits_total{rule,shadow}` | rule hit rates, shadow vs active |
+| `pawguard_moderation_total{verdict,stage}`, `pawguard_llm_*` | moderation outcomes, LLM cost (tokens) and latency |
+| `pawguard_webhook_events_total{outcome}` | provider webhooks: applied, duplicate, bad_signature... |
+| `pawguard_http_*`, `pawguard_login_failures_total` | traffic, latency by route pattern, auth failures |
+
+The registry is per process; with several server workers use Prometheus multiprocess mode.
+
+**Traces.** OpenTelemetry for Django requests and Celery tasks, plus spans for
+`risk.score_booking`, `moderation.moderate_message` and `moderation.llm_classify` (with model,
+tokens and decision as attributes). Off by default:
+
+```bash
+OTEL_ENABLED=True
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+**Dashboard and alerts.** Committed under `observability/`: a Grafana dashboard
+(`grafana/dashboards/pawguard.json`, 17 panels), provisioned alert rules
+(`grafana/provisioning/alerting/rules.yml`: review queue older than 1h; webhook signature
+failures) and a Prometheus scrape config. Bring it all up locally (Prometheus, Grafana, Jaeger):
+
+```bash
+docker compose -f docker-compose.observability.yml up
+# Grafana http://localhost:3000 (admin/admin), Prometheus :9090, Jaeger UI :16686
+```
+
+A test checks that every metric the dashboard and alerts query actually exists, so a renamed
+metric fails CI instead of silently blanking a panel.

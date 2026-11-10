@@ -121,3 +121,10 @@ code.shadow { opacity: 0.6; font-style: italic; }
 .badge.verdict.clean { background: var(--ok-bg); color: var(--ok-fg); }
 .snippet { max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 blockquote { margin: 0.5rem 0; padding: 0.6rem 0.8rem; border-left: 3px solid var(--border); background: var(--select); border-radius: 0 6px 6px 0; white-space: pre-wrap; word-break: break-word; }
+
+.badge.vstate { background: var(--select); color: var(--muted); font-weight: 500; }
+.badge.vstate.verified { background: var(--ok-bg); color: var(--ok-fg); }
+.badge.vstate.rejected { background: var(--bad-bg); color: var(--bad-fg); }
+.badge.vstate.manual_review, .badge.vstate.submitted, .badge.vstate.requested { background: var(--warn-bg); color: var(--warn-fg); }
+.timeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+.timeline li { border-left: 2px solid var(--border); padding-left: 0.6rem; }

@@ -5,6 +5,7 @@ from apps.bookings.models import Booking
 from apps.core.models import AuditLog
 from apps.moderation.models import Message, ModerationResult
 from apps.risk.models import RiskAssessment, RuleHit
+from apps.verification.models import VerificationCase, VerificationEvent
 
 
 class RuleHitSerializer(serializers.ModelSerializer):
@@ -65,6 +66,7 @@ class UserSerializer(serializers.ModelSerializer):
     sitter_max_score = serializers.IntegerField(read_only=True, default=None)
     sitter_flagged_count = serializers.IntegerField(read_only=True, default=0)
     risk_score = serializers.IntegerField(read_only=True, default=0)
+    verification_state = serializers.CharField(read_only=True, default="none")
 
     class Meta:
         model = User
@@ -83,6 +85,7 @@ class UserSerializer(serializers.ModelSerializer):
             "sitter_max_score",
             "sitter_flagged_count",
             "risk_score",
+            "verification_state",
         ]
 
 
@@ -157,3 +160,41 @@ class ModerationSerializer(serializers.ModelSerializer):
             "review_note",
             "created_at",
         ]
+
+
+class VerificationEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VerificationEvent
+        fields = ["from_state", "to_state", "source", "actor_label", "detail", "created_at"]
+
+
+class VerificationCaseSerializer(serializers.ModelSerializer):
+    """Agents see the name and a masked document number, never the full document number."""
+
+    user = serializers.CharField(source="user.username")
+    user_id = serializers.IntegerField()
+    document_number_masked = serializers.SerializerMethodField()
+    events = VerificationEventSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = VerificationCase
+        fields = [
+            "id",
+            "user",
+            "user_id",
+            "state",
+            "full_name",
+            "document_number_masked",
+            "document_country",
+            "rejection_reason",
+            "provider_ref",
+            "submitted_at",
+            "decided_at",
+            "purged_at",
+            "created_at",
+            "events",
+        ]
+
+    def get_document_number_masked(self, case):
+        number = case.document_number
+        return "" if not number else "\u2022" * max(len(number) - 4, 0) + number[-4:]

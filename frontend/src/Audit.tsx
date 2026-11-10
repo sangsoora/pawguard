@@ -26,6 +26,9 @@ export default function Audit() {
             <option value="">any</option>
             <option value="assessment.review">assessment.review</option>
             <option value="message.review">message.review</option>
+            <option value="verification.verified">verification.verified</option>
+            <option value="verification.rejected">verification.rejected</option>
+            <option value="user.request_verification">user.request_verification</option>
             <option value="user.suspend">user.suspend</option>
             <option value="user.reinstate">user.reinstate</option>
           </select>

@@ -1,0 +1,73 @@
+# Grafana-managed alert rules, provisioned from the repo so they are reviewed like code.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: pawguard
+    folder: PawGuard
+    interval: 1m
+    rules:
+      - uid: pg-review-queue-age
+        title: Review queue backlog older than 1 hour
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "The {{ $labels.queue }} review queue has an item waiting over an hour"
+          description: >-
+            Agents are not keeping up with flagged items. Open the console, work the oldest
+            {{ $labels.queue }} items, or add reviewers. Dashboard: PawGuard Trust & Safety.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max by (queue) (pawguard_review_queue_oldest_age_seconds)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [3600]}
+
+      - uid: pg-webhook-bad-signature
+        title: Provider webhooks failing signature checks
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: "Verification webhooks are being rejected (bad signature or payload)"
+          description: >-
+            Either the shared secret is wrong/rotated, the provider changed its contract, or
+            someone is probing the endpoint. Verification results are not being applied.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(pawguard_webhook_events_total{outcome=~"bad_signature|bad_payload"}[10m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [5]}

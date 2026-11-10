@@ -13,3 +13,8 @@ CELERY_BROKER_URL = "memory://"
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 MODERATION_LLM_ENABLED = False
 MODERATION_ASYNC = False
+
+# Fixed test-only values (never used outside tests).
+FIELD_ENCRYPTION_KEYS = ["Cn9wD0nUt3vq1u7f4pQe5mYb1o3xqk4m0Wv2bHq9r1A="]
+VERIFICATION_WEBHOOK_SECRET = "test-webhook-secret"
+VERIFICATION_ASYNC = False

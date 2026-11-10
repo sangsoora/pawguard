@@ -11,9 +11,13 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from django.conf import settings
+from opentelemetry import trace
 from pydantic import BaseModel, ValidationError
 
+from apps.core import metrics
+
 logger = logging.getLogger(__name__)
+_tracer = trace.get_tracer(__name__)
 
 Category = Literal["off_platform_payment", "off_platform_contact", "scam"]
 
@@ -77,6 +81,25 @@ class AnthropicClassifier:
         self.model = model or settings.MODERATION_MODEL
 
     def classify(self, text: str) -> LLMResult:
+        with _tracer.start_as_current_span("moderation.llm_classify") as span:
+            span.set_attribute("llm.model", self.model)
+            try:
+                result = self._classify(text)
+            except ClassifierError as exc:
+                metrics.LLM_CALLS.labels("refused" if "refus" in str(exc) else "error").inc()
+                span.record_exception(exc)
+                raise
+            span.set_attribute("llm.input_tokens", result.input_tokens or 0)
+            span.set_attribute("llm.output_tokens", result.output_tokens or 0)
+            span.set_attribute("llm.flagged", result.flagged)
+        metrics.LLM_CALLS.labels("ok").inc()
+        metrics.LLM_TOKENS.labels("input").inc(result.input_tokens or 0)
+        metrics.LLM_TOKENS.labels("output").inc(result.output_tokens or 0)
+        if result.latency_ms is not None:
+            metrics.LLM_LATENCY.observe(result.latency_ms / 1000)
+        return result
+
+    def _classify(self, text: str) -> LLMResult:
         started = time.perf_counter()
         try:
             response = self.client.messages.parse(

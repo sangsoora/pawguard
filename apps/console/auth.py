@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.core import metrics
 from apps.core.permissions import IsTrustAgent
 
 
@@ -61,11 +62,13 @@ class LoginView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
             response["Retry-After"] = str(lockout)
+            metrics.LOGIN_FAILURES.labels("locked_out").inc()
             return response
 
         user = authenticate(request, **data.validated_data)
         # Same message for bad credentials and non-agents: don't reveal which accounts exist.
         if user is None or user.role != "agent":
+            metrics.LOGIN_FAILURES.labels("invalid_credentials").inc()
             cache.add(key, 0, timeout=lockout)
             try:
                 cache.incr(key)

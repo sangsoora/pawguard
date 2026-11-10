@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { api, ApiError, useApi } from './api'
-import { Empty, ErrorNote, Pager, ScoreBadge, StatusBadge } from './components'
+import {
+  Empty,
+  ErrorNote,
+  Pager,
+  ScoreBadge,
+  StatusBadge,
+  VerificationBadge,
+} from './components'
 import { fmt } from './format'
 import type { Assessment, ConsoleUser, Page } from './types'
 
@@ -42,6 +49,20 @@ function UserDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
   const isAgent = u.role === 'agent'
   const verb = u.status === 'active' ? 'suspend' : 'reinstate'
 
+  async function requestVerification() {
+    setBusy(true)
+    setActionError(null)
+    try {
+      await api(`/users/${id}/request-verification/`, { method: 'POST' })
+      reload()
+      onChanged()
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e : new Error('Request failed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function act() {
     setBusy(true)
     setActionError(null)
@@ -73,6 +94,18 @@ function UserDetail({ id, onChanged }: { id: number; onChanged: () => void }) {
         <dt>Country / IP</dt>
         <dd>
           {u.country || '—'} / {u.signup_ip ?? '—'}
+        </dd>
+        <dt>Identity</dt>
+        <dd>
+          <VerificationBadge state={u.verification_state} />
+          {!isAgent && (!u.verification_state || u.verification_state === 'rejected') && (
+            <>
+              {' '}
+              <button className="link" disabled={busy} onClick={requestVerification}>
+                Request verification
+              </button>
+            </>
+          )}
         </dd>
         <dt>Joined</dt>
         <dd>{fmt(u.date_joined)}</dd>
@@ -163,6 +196,7 @@ export default function Users({ initialId }: { initialId: number | null }) {
                   <th>User</th>
                   <th>Role</th>
                   <th>Status</th>
+                  <th>Identity</th>
                   <th>Risk</th>
                   <th>As owner</th>
                   <th>As sitter</th>
@@ -179,6 +213,9 @@ export default function Users({ initialId }: { initialId: number | null }) {
                     <td>{u.role}</td>
                     <td>
                       <StatusBadge status={u.status} />
+                    </td>
+                    <td>
+                      <VerificationBadge state={u.verification_state} />
                     </td>
                     <td>{u.risk_score || '—'}</td>
                     <td>{u.assessment_count}</td>

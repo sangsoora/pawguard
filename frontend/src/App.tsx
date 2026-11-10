@@ -6,12 +6,14 @@ import Messages from './Messages'
 import Queue from './Queue'
 import type { Me } from './types'
 import Users from './Users'
+import Verification from './Verification'
 
-type Tab = 'queue' | 'messages' | 'users' | 'audit'
+type Tab = 'queue' | 'messages' | 'verification' | 'users' | 'audit'
 
 const LABELS: Record<Tab, string> = {
   queue: 'Risk queue',
   messages: 'Messages',
+  verification: 'Verification',
   users: 'Users',
   audit: 'Audit log',
 }
@@ -51,7 +53,7 @@ export default function App() {
       <header className="topbar">
         <strong>🐾 PawGuard</strong>
         <nav>
-          {(['queue', 'messages', 'users', 'audit'] as const).map((t) => (
+          {(['queue', 'messages', 'verification', 'users', 'audit'] as const).map((t) => (
             <button key={t} className={t === tab ? 'active' : ''} onClick={() => setTab(t)}>
               {LABELS[t]}
             </button>
@@ -64,6 +66,7 @@ export default function App() {
       <main className="content">
         {tab === 'queue' && <Queue onOpenUser={openUser} />}
         {tab === 'messages' && <Messages />}
+        {tab === 'verification' && <Verification />}
         {tab === 'users' && <Users key={userId ?? 'none'} initialId={userId} />}
         {tab === 'audit' && <Audit />}
       </main>

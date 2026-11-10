@@ -1,11 +1,16 @@
 import logging
 from dataclasses import dataclass, field
 
+from opentelemetry import trace
+
+from apps.core import metrics
+
 from .llm import Classifier, ClassifierError, LLMResult
 from .models import Message, ModerationResult
 from .rules import run_rules
 
 logger = logging.getLogger(__name__)
+_tracer = trace.get_tracer(__name__)
 
 V = ModerationResult.Verdict
 S = ModerationResult.Stage
@@ -75,7 +80,24 @@ def classify_text(text: str, classifier: Classifier | None = None) -> Outcome:
 
 
 def moderate_message(message: Message, classifier: Classifier | None) -> ModerationResult:
-    outcome = classify_text(message.body, classifier)
+    with _tracer.start_as_current_span("moderation.moderate_message") as span:
+        span.set_attribute("message.id", message.pk)
+        outcome = classify_text(message.body, classifier)
+        span.set_attribute("moderation.verdict", outcome.verdict)
+        span.set_attribute("moderation.stage", outcome.stage)
+        span.set_attribute("moderation.categories", outcome.categories)
+    metrics.MODERATION.labels(outcome.verdict, outcome.stage).inc()
+    if outcome.verdict != V.CLEAN:
+        metrics.FLAGS.labels("message", outcome.verdict).inc()
+    logger.info(
+        "message moderated",
+        extra={
+            "message_id": message.pk,
+            "verdict": outcome.verdict,
+            "stage": outcome.stage,
+            "categories": outcome.categories,
+        },
+    )
     llm = outcome.llm
     result, _ = ModerationResult.objects.update_or_create(
         message=message,

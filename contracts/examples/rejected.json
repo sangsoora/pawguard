@@ -1,0 +1,1 @@
+{"id": "evt_0002", "type": "verification.rejected", "created": 1790000000, "data": {"reference": "mock_abc123", "reason": "Document expired"}}

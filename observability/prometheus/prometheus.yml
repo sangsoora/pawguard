@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: pawguard
+    metrics_path: /metrics/
+    # If METRICS_TOKEN is set in Django, uncomment and set the same value:
+    # authorization: {type: Bearer, credentials: change-me}
+    static_configs:
+      # Django running on the host (macOS/Windows Docker Desktop); on Linux use the host IP.
+      - targets: ["host.docker.internal:8000"]
