@@ -71,3 +71,37 @@ groups:
               expression: B
               conditions:
                 - evaluator: {type: gt, params: [5]}
+
+      - uid: pg-verification-stuck
+        title: Verification submissions stuck before the provider
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "A verification submission has not reached the provider for over 15 minutes"
+          description: >-
+            The sweeper retries every 5 minutes, so something is persistently failing: the
+            provider is down, credentials changed, or the worker is not running. Users are
+            waiting on a decision that cannot arrive.
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max(pawguard_verification_unsent_oldest_age_seconds)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [900]}

@@ -2,6 +2,14 @@
 
 Trust & Safety platform for a fictional pet-sitting marketplace (risk scoring, message moderation, review console).
 
+## Architecture decisions
+
+The reasoning behind the main design choices (rules vs ML, inline vs async scoring, Redis windows,
+the moderation pipeline, verification webhooks, PII handling, auth, observability) is recorded as
+ADRs in [`docs/adr/`](docs/adr/README.md), including the known gaps we chose to live with. The
+whole-system view (architecture, flows, threat model, failure modes, measured performance, what is
+not built, open questions for reviewers) is in [`docs/design.md`](docs/design.md).
+
 ## Setup
 
 ```bash
@@ -122,9 +130,21 @@ python manage.py simulate_provider_webhook <case_id> approved|rejected|review   
 python manage.py purge_verification_documents                                   # retention (also daily via celery beat)
 ```
 
-Users submit through `POST /api/verification/me/` (a marketplace-user login is not built yet, so
-tests and the shell call it directly). Agents handle manual-review cases in the console's
-Verification tab and can request verification from a user's page; every action is audited.
+**User screen.** Owners and sitters sign in at <http://localhost:5173/account> (same React app,
+separate login at `/api/account/auth/`; try `olivia` / `pawguard-dev` after `seed_users`) and submit
+their details there. The page shows where the case stands, polls while a decision is pending, and
+explains a rejection with the reason and lets the user try again. Roles are kept apart: an agent
+cannot use this login, a user cannot use the console login, and suspended users are refused. Both
+doors share the same CSRF, throttling and lockout (counted separately per door). Behind a real server,
+make `/account` fall back to the app's `index.html` like any single-page route. There is no sign-up
+yet; accounts come from `seed_users` or the admin.
+
+**Stuck submissions.** If the provider is down when a user submits, the case is saved as
+`submitted` without a provider reference. A sweeper (`resend_unsent_task`, every 5 minutes via
+`celery -A config beat`, or `python manage.py resend_unsent_verifications`) re-sends cases older than
+`VERIFICATION_RESEND_AFTER_SECONDS` (default 120). It is idempotent, one failing case never blocks
+the others, and the `pawguard_verification_unsent_*` gauges plus a Grafana alert (stuck > 15 min)
+show when something is persistently wrong.
 
 ## Observability
 
@@ -163,7 +183,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 **Dashboard and alerts.** Committed under `observability/`: a Grafana dashboard
-(`grafana/dashboards/pawguard.json`, 17 panels), provisioned alert rules
+(`grafana/dashboards/pawguard.json`, 18 panels), provisioned alert rules
 (`grafana/provisioning/alerting/rules.yml`: review queue older than 1h; webhook signature
 failures) and a Prometheus scrape config. Bring it all up locally (Prometheus, Grafana, Jaeger):
 

@@ -253,11 +253,13 @@ def test_user_submits_documents(user, django_capture_on_commit_callbacks):
     payload = {"full_name": "Ana García", "document_number": "X1234567Z", "document_country": "es"}
     with django_capture_on_commit_callbacks(execute=True):
         r = api_client(user).post("/api/verification/me/", payload)
-    assert r.status_code == 202 and r.json() == {"state": "submitted"}
+    assert r.status_code == 202
+    assert r.json()["state"] == "submitted" and r.json()["can_submit"] is False
     case = user.verification_cases.get()
     assert case.provider_ref and case.provider_ref.startswith("mock_")  # sent to the provider
     me = api_client(user).get("/api/verification/me/").json()
-    assert me == {"state": "submitted"}  # status only: no PII in the response
+    assert me["state"] == "submitted"
+    assert "X1234567Z" not in json.dumps(me) and "Ana" not in json.dumps(me)  # no PII
 
 
 @pytest.mark.parametrize(
@@ -393,3 +395,126 @@ def test_simulate_command_requires_provider_reference(db, user):
     case = VerificationCase.objects.create(user=user)
     with pytest.raises(CommandError, match="provider reference"):
         call_command("simulate_provider_webhook", case.pk, "approved")
+
+
+# --- user-facing status payload ---
+
+
+def test_status_payload_for_each_situation(user, agent):
+    c = api_client(user)
+    assert c.get("/api/verification/me/").json() == {
+        "state": "none",
+        "can_submit": True,
+        "rejection_reason": "",
+        "requested_by_agent": False,
+    }
+    case = services.request_verification(user, agent=agent)
+    asked = c.get("/api/verification/me/").json()
+    assert asked["state"] == "requested" and asked["requested_by_agent"] and asked["can_submit"]
+
+    services.transition(case, S.SUBMITTED, source="user")
+    services.transition(case, S.REJECTED, source="provider", detail="Document expired")
+    rejected = c.get("/api/verification/me/").json()
+    assert rejected["state"] == "rejected" and rejected["can_submit"] is True
+    assert rejected["rejection_reason"] == "Document expired"  # they are told why
+
+
+def test_user_can_resubmit_after_rejection(user):
+    case = services.submit_documents(
+        user, full_name="Ana García", document_number="X1234567Z", document_country="ES"
+    )
+    services.transition(case, S.REJECTED, source="provider", detail="Blurry photo")
+    payload = {"full_name": "Ana García", "document_number": "X7654321Z", "document_country": "ES"}
+    r = api_client(user).post("/api/verification/me/", payload)
+    assert r.status_code == 202 and user.verification_cases.count() == 2
+
+
+# --- re-send sweeper ---
+
+
+def _stuck_case(user, *, age_seconds=600, number="X1234567Z"):
+    case = services.submit_documents(
+        user, full_name="Ana García", document_number=number, document_country="ES"
+    )
+    VerificationCase.objects.filter(pk=case.pk).update(
+        submitted_at=timezone.now() - timedelta(seconds=age_seconds)
+    )
+    return case
+
+
+def test_sweeper_resends_stuck_submissions(user):
+    from apps.verification.tasks import resend_unsent
+
+    case = _stuck_case(user)
+    assert resend_unsent(min_age_seconds=120) == {"found": 1, "sent": 1, "failed": 0}
+    case.refresh_from_db()
+    assert case.provider_ref and case.provider_ref.startswith("mock_")
+    assert resend_unsent(min_age_seconds=120)["found"] == 0  # nothing left to do
+
+
+def test_sweeper_leaves_fresh_sent_and_decided_cases_alone(user, agent):
+    from apps.verification.tasks import resend_unsent
+
+    fresh = _stuck_case(user, age_seconds=10)  # still being sent normally
+    other = User.objects.create_user("o2", "o2@x.com", "pw", role=User.Role.OWNER)
+    sent = _stuck_case(other, number="AB123456")
+    send_to_provider(sent.pk)  # already has a reference
+    third = User.objects.create_user("o3", "o3@x.com", "pw", role=User.Role.OWNER)
+    decided = _stuck_case(third, number="CD123456")
+    services.transition(decided, S.REJECTED, source="provider", detail="x")
+
+    assert resend_unsent(min_age_seconds=120)["found"] == 0
+    fresh.refresh_from_db()
+    assert fresh.provider_ref is None
+
+
+def test_one_failing_case_does_not_block_the_others(user, monkeypatch):
+    from apps.verification.tasks import resend_unsent
+
+    first = _stuck_case(user)
+    other = User.objects.create_user("o2", "o2@x.com", "pw", role=User.Role.OWNER)
+    second = _stuck_case(other, number="AB123456")
+    real = provider.MockProvider.submit
+
+    def flaky(self, case):
+        if case.pk == first.pk:
+            raise provider.ProviderError("down")
+        return real(self, case)
+
+    monkeypatch.setattr(provider.MockProvider, "submit", flaky)
+    assert resend_unsent(min_age_seconds=120) == {"found": 2, "sent": 1, "failed": 1}
+    first.refresh_from_db(), second.refresh_from_db()
+    assert first.provider_ref is None and second.provider_ref  # first stays retryable
+    monkeypatch.undo()
+    assert resend_unsent(min_age_seconds=120)["sent"] == 1  # next sweep picks it up
+
+
+def test_sweeper_updates_metrics_and_gauges(user):
+    from apps.core import metrics
+    from apps.verification.tasks import resend_unsent
+
+    _stuck_case(user, age_seconds=1800)
+    assert metrics.registry.get_sample_value("pawguard_verification_unsent_cases") == 1
+    age = metrics.registry.get_sample_value("pawguard_verification_unsent_oldest_age_seconds")
+    assert age >= 1790
+    before = (
+        metrics.registry.get_sample_value("pawguard_verification_resend_total", {"outcome": "sent"})
+        or 0
+    )
+    resend_unsent(min_age_seconds=120)
+    after = metrics.registry.get_sample_value(
+        "pawguard_verification_resend_total", {"outcome": "sent"}
+    )
+    assert after == before + 1
+    assert metrics.registry.get_sample_value("pawguard_verification_unsent_cases") == 0
+
+
+def test_sweeper_is_scheduled_and_has_a_command(user, settings):
+    from django.core.management import call_command
+
+    assert settings.CELERY_BEAT_SCHEDULE["resend-unsent-verifications"]["task"] == (
+        "apps.verification.tasks.resend_unsent_task"
+    )
+    _stuck_case(user)
+    call_command("resend_unsent_verifications", "--min-age", "120")
+    assert user.verification_cases.get().provider_ref

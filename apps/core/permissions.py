@@ -14,3 +14,18 @@ class IsTrustAgent(BasePermission):
             and user.is_active
             and getattr(user, "role", None) == "agent"
         )
+
+
+class IsMarketplaceUser(BasePermission):
+    """Active owners and sitters (the people who use the marketplace itself)."""
+
+    message = "Marketplace account required."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and user.is_active
+            and getattr(user, "role", None) in ("owner", "sitter")
+        )

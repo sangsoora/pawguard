@@ -159,11 +159,17 @@ FIELD_ENCRYPTION_KEYS = env.list(
 VERIFICATION_WEBHOOK_SECRET = env("VERIFICATION_WEBHOOK_SECRET", default="")
 VERIFICATION_RETENTION_DAYS = env.int("VERIFICATION_RETENTION_DAYS", default=30)
 VERIFICATION_ASYNC = env.bool("VERIFICATION_ASYNC", default=False)
+# A submission with no provider reference after this long is re-sent by the sweeper.
+VERIFICATION_RESEND_AFTER_SECONDS = env.int("VERIFICATION_RESEND_AFTER_SECONDS", default=120)
 
 CELERY_BEAT_SCHEDULE = {
     "purge-verification-documents": {
         "task": "apps.verification.tasks.purge_documents_task",
         "schedule": 24 * 3600,  # daily; run with `celery -A config beat`
+    },
+    "resend-unsent-verifications": {
+        "task": "apps.verification.tasks.resend_unsent_task",
+        "schedule": 300,  # every 5 minutes
     },
 }
 

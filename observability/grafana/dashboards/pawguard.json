@@ -884,6 +884,63 @@
           "mode": "multi"
         }
       }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Stuck verification submissions",
+      "description": "Submitted but never reached the provider. The sweeper re-sends these every 5 min; a count that stays above 0 means the provider is down or rejecting us.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "pawguard_verification_unsent_cases",
+          "legendFormat": "stuck cases",
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (outcome) (increase(pawguard_verification_resend_total[1h]))",
+          "legendFormat": "re-send {{outcome}}",
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     }
   ],
   "templating": {

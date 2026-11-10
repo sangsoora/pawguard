@@ -8,6 +8,7 @@ urlpatterns = [
     path("health/", health, name="health"),
     path("metrics/", metrics, name="metrics"),
     path("api/console/", include("apps.console.urls")),
+    path("api/account/", include("apps.accounts.api")),
     path("api/verification/", include("apps.verification.urls")),
     path("api-auth/", include("rest_framework.urls")),  # session login for the browsable API
 ]

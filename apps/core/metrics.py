@@ -48,6 +48,12 @@ VERIFICATION_TRANSITIONS = Counter(
     ["to_state", "source"],
     registry=registry,
 )
+VERIFICATION_RESEND = Counter(
+    "pawguard_verification_resend_total",
+    "Sweeper attempts to re-send submissions that never reached the provider.",
+    ["outcome"],
+    registry=registry,
+)
 WEBHOOK_EVENTS = Counter(
     "pawguard_webhook_events_total",
     "Provider webhook outcomes (applied, duplicate, ignored, unknown_case, bad_signature, "
@@ -113,6 +119,23 @@ class QueueCollector:
         yield size
         yield age
 
+        unsent = GaugeMetricFamily(
+            "pawguard_verification_unsent_cases",
+            "Submitted verifications with no provider reference (stuck before the provider).",
+        )
+        unsent_age = GaugeMetricFamily(
+            "pawguard_verification_unsent_oldest_age_seconds",
+            "Age of the oldest stuck submission, 0 when none.",
+        )
+        try:
+            count, oldest = _unsent_stats()
+            unsent.add_metric([], count)
+            unsent_age.add_metric([], max(0.0, time.time() - oldest.timestamp()) if oldest else 0)
+        except Exception:
+            logger.exception("Could not compute unsent verification gauges")
+        yield unsent
+        yield unsent_age
+
     def describe(self):
         return []
 
@@ -141,6 +164,17 @@ def _queue_stats():
             VerificationCase.objects.filter(state="manual_review"), since="updated_at"
         ),
     }
+
+
+def _unsent_stats():
+    from django.db.models import Count, Min
+
+    from apps.verification.models import VerificationCase
+
+    agg = VerificationCase.objects.filter(state="submitted", provider_ref__isnull=True).aggregate(
+        n=Count("pk"), oldest=Min("submitted_at")
+    )
+    return agg["n"], agg["oldest"]
 
 
 registry.register(QueueCollector())

@@ -5,12 +5,11 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from rest_framework import serializers, status
-from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import User
 from apps.core import metrics
+from apps.core.permissions import IsMarketplaceUser
 
 from . import services, signing
 from .models import VerificationCase
@@ -43,12 +42,6 @@ def provider_webhook(request):
     return JsonResponse({"status": outcome})
 
 
-class IsMarketplaceUser(BasePermission):
-    def has_permission(self, request, view):
-        u = request.user
-        return bool(u and u.is_authenticated and u.role in (User.Role.OWNER, User.Role.SITTER))
-
-
 class SubmitSerializer(serializers.Serializer):
     full_name = serializers.CharField(min_length=2, max_length=200)
     document_number = serializers.RegexField(r"^[A-Za-z0-9-]{4,40}$")
@@ -70,14 +63,26 @@ def _dispatch_to_provider(case_id: int) -> None:
         logger.exception("Provider submission failed for case %s", case_id)
 
 
+def _status_payload(user) -> dict:
+    """What a user may know about their own verification. Never includes personal data."""
+    case = user.verification_cases.first()
+    state = case.state if case else "none"
+    return {
+        "state": state,
+        # (Re)submitting is allowed when nothing is in flight: no case, a request, or a rejection.
+        "can_submit": state in ("none", "requested", "rejected"),
+        "rejection_reason": case.rejection_reason if case and state == "rejected" else "",
+        "requested_by_agent": bool(case and case.requested_by_id and state == "requested"),
+    }
+
+
 class MyVerificationView(APIView):
     """The caller's own verification status. Never returns PII."""
 
-    permission_classes = [IsAuthenticated, IsMarketplaceUser]
+    permission_classes = [IsMarketplaceUser]
 
     def get(self, request):
-        case = request.user.verification_cases.first()
-        return Response({"state": case.state if case else "none"})
+        return Response(_status_payload(request.user))
 
     def post(self, request):
         data = SubmitSerializer(data=request.data)
@@ -89,7 +94,7 @@ class MyVerificationView(APIView):
         from django.db import transaction
 
         transaction.on_commit(lambda: _dispatch_to_provider(case.pk))
-        return Response({"state": case.state}, status=status.HTTP_202_ACCEPTED)
+        return Response(_status_payload(request.user), status=status.HTTP_202_ACCEPTED)
 
 
 __all__ = ["provider_webhook", "MyVerificationView", "VerificationCase"]

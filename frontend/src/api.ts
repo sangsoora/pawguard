@@ -35,7 +35,9 @@ export async function api<T>(
   retriedCsrf = false,
 ): Promise<T> {
   const method = options.method ?? 'GET'
-  const res = await fetch(`/api/console${path}`, {
+  // Paths starting with /api/ are absolute (used by the end-user app); others are console-relative.
+  const url = path.startsWith('/api/') ? path : `/api/console${path}`
+  const res = await fetch(url, {
     method,
     credentials: 'same-origin',
     headers: {
@@ -62,8 +64,8 @@ export async function api<T>(
 }
 
 /** Ensures the pawguard-csrftoken cookie exists before any POST. */
-export function primeCsrf(): Promise<unknown> {
-  return api('/auth/csrf/')
+export function primeCsrf(path = '/auth/csrf/'): Promise<unknown> {
+  return api(path)
 }
 
 /** Fetch on mount and whenever `path` changes; `reload` refetches. */

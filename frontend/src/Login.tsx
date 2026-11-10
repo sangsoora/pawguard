@@ -3,7 +3,15 @@ import { api, ApiError } from './api'
 import { ErrorNote } from './components'
 import type { Me } from './types'
 
-export default function Login({ onLogin }: { onLogin: (me: Me) => void }) {
+export default function Login({
+  onLogin,
+  path = '/auth/login/',
+  subtitle = 'Trust & Safety console',
+}: {
+  onLogin: (me: Me) => void
+  path?: string
+  subtitle?: string
+}) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<Error | null>(null)
@@ -14,7 +22,7 @@ export default function Login({ onLogin }: { onLogin: (me: Me) => void }) {
     setBusy(true)
     setError(null)
     try {
-      onLogin(await api<Me>('/auth/login/', { method: 'POST', body: { username, password } }))
+      onLogin(await api<Me>(path, { method: 'POST', body: { username, password } }))
     } catch (err) {
       setError(err instanceof ApiError ? err : new Error('Could not reach the server'))
     } finally {
@@ -26,7 +34,7 @@ export default function Login({ onLogin }: { onLogin: (me: Me) => void }) {
     <main className="login">
       <form onSubmit={submit} className="card">
         <h1>🐾 PawGuard</h1>
-        <p className="muted">Trust &amp; Safety console</p>
+        <p className="muted">{subtitle}</p>
         <label>
           Username
           <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
