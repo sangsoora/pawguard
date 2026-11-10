@@ -7,3 +7,6 @@ staticfiles/
 .pytest_cache/
 .ruff_cache/
 .DS_Store
+
+frontend/dist/
+frontend/node_modules/

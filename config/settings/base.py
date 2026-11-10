@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.bookings",
     "apps.risk",
+    "apps.moderation",
     "apps.console",
 ]
 
@@ -39,6 +40,12 @@ MIDDLEWARE = [
 ]
 
 AUTH_USER_MODEL = "accounts.User"
+
+# Cookies ignore ports, so on localhost any other local project shares the default names
+# ("csrftoken", "sessionid") and can shadow or overwrite them. Use app-specific names.
+CSRF_COOKIE_NAME = "pawguard-csrftoken"
+SESSION_COOKIE_NAME = "pawguard-sessionid"
+CSRF_FAILURE_VIEW = "apps.core.views.csrf_failure"
 
 ROOT_URLCONF = "config.urls"
 
@@ -68,6 +75,16 @@ DATABASES = {
 # Redis backs the sliding-window counters. Leave empty to fall back to DB counts.
 REDIS_URL = env("REDIS_URL", default="")
 
+# Cache backs login throttling/lockout. Redis when configured (shared across processes),
+# otherwise per-process memory, which is fine for local dev.
+CACHES = {
+    "default": (
+        {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": REDIS_URL}
+        if REDIS_URL
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
+    )
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -95,6 +112,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
+    "DEFAULT_THROTTLE_RATES": {"login": "20/min"},  # per client IP, on top of the lockout
 }
 
 # --- Celery (broker defaults to REDIS_URL) ---
@@ -107,3 +125,15 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # Score new bookings through Celery instead of inline. Needs a broker and a running worker.
 RISK_ASYNC_SCORING = env.bool("RISK_ASYNC_SCORING", default=False)
+
+# Login lockout: this many failures for one username from one IP locks it for LOCKOUT seconds.
+LOGIN_MAX_FAILURES = 5
+LOGIN_LOCKOUT_SECONDS = 15 * 60
+
+# --- Message moderation ---
+# Stage 2 (LLM) is opt-in: it costs money. Needs ANTHROPIC_API_KEY in the environment.
+MODERATION_LLM_ENABLED = env.bool("MODERATION_LLM_ENABLED", default=False)
+MODERATION_MODEL = env("MODERATION_MODEL", default="claude-opus-5-5")
+# USD per million tokens, used for the cost estimate in eval_moderation (claude-opus-5-5 rates).
+MODERATION_PRICE_PER_MTOK = {"input": 4.0, "output": 20.0}
+MODERATION_ASYNC = env.bool("MODERATION_ASYNC", default=False)

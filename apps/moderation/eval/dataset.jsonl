@@ -1,0 +1,46 @@
+{"text": "Hi! Bella is a 3 year old lab, she loves long walks. Is Saturday still OK?", "label": "clean"}
+{"text": "Can you send me a few photos of Max during the stay?", "label": "clean"}
+{"text": "I'll send you the keys with my neighbour on Friday morning.", "label": "clean"}
+{"text": "Please pay attention to her left paw, she limps when she gets tired.", "label": "clean"}
+{"text": "Thanks so much, payment went through in the app, see you at 9am!", "label": "clean"}
+{"text": "Booking confirmed for 2026-12-01 to 2026-12-03, looking forward to it.", "label": "clean"}
+{"text": "He eats twice a day, 200g in the morning and 150g at night.", "label": "clean"}
+{"text": "I'm running late, will be there in 10 minutes.", "label": "clean"}
+{"text": "Does the price include the walks, or is that extra?", "label": "clean"}
+{"text": "The vet's number is 912 345 678 in case of emergency, but I'll be reachable too.", "label": "clean", "note": "phone number with a legitimate, in-booking purpose"}
+{"text": "My phone is +34 600 123 456 in case you get lost finding the house tomorrow.", "label": "clean", "note": "logistics for an imminent confirmed booking"}
+{"text": "I use PayPal for my own shop but here everything goes through the platform, right?", "label": "clean", "note": "mentions payment app, no off-platform ask"}
+{"text": "She hates fireworks, so please keep the TV on and the windows closed.", "label": "clean"}
+{"text": "You can check my reviews on my profile, I've done 40+ stays.", "label": "clean"}
+{"text": "Is the refund policy the same if I cancel two days before?", "label": "clean"}
+{"text": "Do you accept cats too? Mine is very calm.", "label": "clean"}
+{"text": "I'll bring cash for the tip if that's ok, tips are allowed, right?", "label": "clean", "note": "tip in cash, not payment for the booking"}
+{"text": "My email changed, I updated it in my account settings.", "label": "clean"}
+{"text": "Great, see the full care instructions in the booking notes.", "label": "clean"}
+{"text": "Could you give him his medication at 8pm? It's the white pill.", "label": "clean"}
+{"text": "Welcome back! Luna missed you, she's been waiting by the door.", "label": "clean"}
+{"text": "Saturday works. Dropping Rex off at 10, is that fine?", "label": "clean"}
+{"text": "I can do 3 nights for the price we agreed, no problem.", "label": "clean"}
+{"text": "Check the walking route I use: https://maps.example.com/route/123", "label": "clean", "note": "harmless link"}
+{"text": "I'm abroad until Thursday but my sister will hand over the dog.", "label": "clean", "note": "travel mention without payment ask"}
+{"text": "Pay me on Bizum and I'll give you a discount, no need for the app.", "label": "flag", "category": "off_platform_payment"}
+{"text": "Send the money to my PayPal directly, it's cheaper for both of us.", "label": "flag", "category": "off_platform_payment"}
+{"text": "I can do it for 30 less if you pay cash directly instead of through the app.", "label": "flag", "category": "off_platform_payment"}
+{"text": "Let's avoid the fees. Venmo me and we'll cancel the booking here.", "label": "flag", "category": "off_platform_payment"}
+{"text": "Transfer to ES91 2100 0418 4502 0005 1332 and I'll confirm the stay.", "label": "flag", "category": "off_platform_payment"}
+{"text": "I accept USDT or bitcoin to my wallet, much cheaper than the platform.", "label": "flag", "category": "off_platform_payment"}
+{"text": "p​a​y me via zelle instead, i keep my account off the app.", "label": "flag", "category": "off_platform_payment", "note": "zero-width character evasion"}
+{"text": "ＰＡＹ ＭＥ on ＢＩＺＵＭ and skip the app", "label": "flag", "category": "off_platform_payment", "note": "fullwidth characters"}
+{"text": "Skip the commission, pay my IBAN GB29 NWBK 6016 1331 9268 19 directly.", "label": "flag", "category": "off_platform_payment"}
+{"text": "Message me outside the app on WhatsApp and we will arrange everything there.", "label": "flag", "category": "off_platform_contact"}
+{"text": "Let's move this off the platform, text me on telegram.", "label": "flag", "category": "off_platform_contact"}
+{"text": "Contact me away from the app, my email is sam@example.com.", "label": "flag", "category": "off_platform_contact"}
+{"text": "I sent a cheque for more than the price by mistake, please send back the difference.", "label": "flag", "category": "scam"}
+{"text": "I overpaid by accident, wire the extra back to me and keep the rest for your trouble.", "label": "flag", "category": "scam"}
+{"text": "Please share the verification code we just sent you so I can confirm your account.", "label": "flag", "category": "scam", "note": "OTP phishing"}
+{"text": "Buy a gift card and send me the code, I'll pay you double after.", "label": "flag", "category": "scam"}
+{"text": "Send me the one-time password you received by SMS, it is needed to release the payment.", "label": "flag", "category": "scam"}
+{"text": "Add me on WhatsApp, we can agree the price there and pay in cash.", "label": "flag", "category": "off_platform_contact", "note": "weak signals only; needs the LLM or a human"}
+{"text": "I'm deployed overseas and can't meet. Send money for the courier fee and I'll pay you back.", "label": "flag", "category": "scam", "note": "weak signals only; needs the LLM or a human"}
+{"text": "Click https://bit.ly/3xYz to confirm your payout details before the booking.", "label": "flag", "category": "scam", "note": "weak signals only; needs the LLM or a human"}
+{"text": "Call me on 612 998 877 and we sort the payment by phone, no app needed.", "label": "flag", "category": "off_platform_payment", "note": "weak signals only; needs the LLM or a human"}

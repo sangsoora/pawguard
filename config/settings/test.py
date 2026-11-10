@@ -10,3 +10,6 @@ RISK_ASYNC_SCORING = False
 # Redis-backed tests inject fakeredis explicitly.
 REDIS_URL = ""
 CELERY_BROKER_URL = "memory://"
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+MODERATION_LLM_ENABLED = False
+MODERATION_ASYNC = False

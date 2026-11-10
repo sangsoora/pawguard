@@ -3,6 +3,7 @@ from rest_framework import serializers
 from apps.accounts.models import User
 from apps.bookings.models import Booking
 from apps.core.models import AuditLog
+from apps.moderation.models import Message, ModerationResult
 from apps.risk.models import RiskAssessment, RuleHit
 
 
@@ -60,6 +61,10 @@ class ReviewInputSerializer(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     max_score = serializers.IntegerField(read_only=True, default=None)
     assessment_count = serializers.IntegerField(read_only=True, default=0)
+    # Risk from bookings this user received as a sitter, and the worst of both roles.
+    sitter_max_score = serializers.IntegerField(read_only=True, default=None)
+    sitter_flagged_count = serializers.IntegerField(read_only=True, default=0)
+    risk_score = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = User
@@ -75,22 +80,31 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "max_score",
             "assessment_count",
+            "sitter_max_score",
+            "sitter_flagged_count",
+            "risk_score",
         ]
 
 
 class UserDetailSerializer(UserSerializer):
     recent_assessments = serializers.SerializerMethodField()
+    received_assessments = serializers.SerializerMethodField()
 
     class Meta(UserSerializer.Meta):
-        fields = [*UserSerializer.Meta.fields, "recent_assessments"]
+        fields = [*UserSerializer.Meta.fields, "recent_assessments", "received_assessments"]
+
+    @staticmethod
+    def _serialize(qs):
+        qs = qs.select_related("booking__owner", "booking__sitter", "user").prefetch_related("hits")
+        return AssessmentSerializer(qs.order_by("-created_at")[:20], many=True).data
 
     def get_recent_assessments(self, user):
-        qs = (
-            user.risk_assessments.select_related("booking__owner", "booking__sitter", "user")
-            .prefetch_related("hits")
-            .order_by("-created_at")[:20]
-        )
-        return AssessmentSerializer(qs, many=True).data
+        """Assessments of bookings this user made as the owner."""
+        return self._serialize(user.risk_assessments.all())
+
+    def get_received_assessments(self, user):
+        """Assessments of bookings where this user was the sitter."""
+        return self._serialize(RiskAssessment.objects.filter(booking__sitter=user))
 
 
 class ReasonInputSerializer(serializers.Serializer):
@@ -107,5 +121,39 @@ class AuditLogSerializer(serializers.ModelSerializer):
             "target_type",
             "target_id",
             "metadata",
+            "created_at",
+        ]
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender = serializers.CharField(source="sender.username")
+
+    class Meta:
+        model = Message
+        fields = ["id", "booking_id", "sender", "body", "created_at"]
+
+
+class ModerationSerializer(serializers.ModelSerializer):
+    message = MessageSerializer()
+    reviewed_by = serializers.CharField(source="reviewed_by.username", default=None)
+
+    class Meta:
+        model = ModerationResult
+        fields = [
+            "id",
+            "message",
+            "verdict",
+            "stage",
+            "categories",
+            "reasons",
+            "confidence",
+            "llm_model",
+            "llm_input_tokens",
+            "llm_output_tokens",
+            "llm_latency_ms",
+            "review_status",
+            "reviewed_by",
+            "reviewed_at",
+            "review_note",
             "created_at",
         ]
